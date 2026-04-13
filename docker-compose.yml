@@ -8,7 +8,7 @@ services:
       - ./config:/config          # credentials.json, token.json, shows.txt
       - ./.env:/app/.env          # writable so web UI can persist settings
     ports:
-      - "8080:8080"               # only needed during auth setup — remove after
+      #- "8080:8080"               # only needed during auth setup — remove after
       - "${PORT:-7840}:5000"      # web UI
     logging:
       driver: json-file
@@ -16,7 +16,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
       interval: 30s
       timeout: 5s
       retries: 3
