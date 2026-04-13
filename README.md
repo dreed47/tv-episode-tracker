@@ -58,6 +58,13 @@ Edit `.env` and set at minimum:
 
 ### Step 3 — Authenticate (one time only)
 
+Port `8080` is required for the OAuth redirect during this step. It is already defined in `docker-compose.yml` but commented out by default — uncomment it before running auth, then comment it back out afterwards.
+
+```yaml
+ports:
+  - "8080:8080"   # ← uncomment for auth, comment out again after
+```
+
 Run this on a machine with a browser (your desktop):
 
 ```bash
@@ -65,6 +72,8 @@ docker compose run --rm --service-ports tv-tracker python auth.py
 ```
 
 A URL will be printed — open it in your browser, sign in, approve access. `config/token.json` is created and the token auto-refreshes forever after.
+
+> After auth succeeds, comment `8080:8080` back out in `docker-compose.yml` — it is not needed for normal operation.
 
 ### Step 4 — Start the tracker
 
