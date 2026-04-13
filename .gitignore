@@ -1,0 +1,4 @@
+.env
+config/credentials.json
+config/token.json
+config/shows.txt

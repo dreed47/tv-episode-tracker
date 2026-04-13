@@ -1,0 +1,21 @@
+# TV Show list — one show per line
+# Format: Show Name|TVmazeID   (ID recommended — faster and more accurate)
+# Or just: Show Name            (tracker will search TVmaze automatically)
+#
+# Find TVmaze IDs at: https://www.tvmaze.com/search?q=show+name
+# The ID is in the URL: tvmaze.com/shows/431/game-of-thrones → ID is 431
+
+Fire Country|37921
+The Pitt|75706
+Severance|14795
+Shrinking|49714
+Reacher|38588
+The Bear|44217
+Fallout|38963
+The Diplomat|47261
+Virgin River|39762
+Bridgerton|38870
+
+# Shows without IDs (slower — requires a TVmaze search each run)
+# When Calls The Heart
+# Tulsa King

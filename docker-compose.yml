@@ -1,0 +1,23 @@
+services:
+  tv-tracker:
+    build: .
+    container_name: tv-episode-tracker
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config:/config          # credentials.json, token.json, shows.txt
+      - ./.env:/app/.env          # writable so web UI can persist settings
+    ports:
+      - "8080:8080"               # only needed during auth setup — remove after
+      - "${PORT:-7840}:5000"      # web UI
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
