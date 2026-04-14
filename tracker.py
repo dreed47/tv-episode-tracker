@@ -368,6 +368,7 @@ _HTML = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>">
 <title>TV Episode Tracker</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -384,6 +385,11 @@ _HTML = """<!doctype html>
   #btn-run:disabled { background: #555; color: #888; cursor: default; }
   #btn-clear { background: #444; color: #ccc; }
   #status { font-size: 12px; color: #888; }
+  header.manual-mode { background: #1e1608 !important; border-bottom-color: #b8860b; }
+  #manual-badge { display:none; font-size:11px; font-weight:bold; color:#f0a500;
+                  background:#3a2a00; border:1px solid #b8860b; border-radius:4px;
+                  padding:3px 8px; letter-spacing:.05em; }
+  header.manual-mode #manual-badge { display:inline; }
   #log { padding: 10px 16px; height: calc(100vh - 50px); overflow-y: auto;
          white-space: pre-wrap; word-break: break-all; }
   .INFO    { color: #d4d4d4; }
@@ -396,6 +402,7 @@ _HTML = """<!doctype html>
 <body>
 <header>
   <h1>📺 TV Episode Tracker</h1>
+  <span id="manual-badge">⏸ SCHEDULER DISABLED</span>
   <span id="status">connecting…</span>
   <a id="ha-link" href="#" target="_blank" rel="noopener"
      style="display:none;color:#7eb8f7;font-size:12px;text-decoration:none"
@@ -438,10 +445,16 @@ _HTML = """<!doctype html>
       const d = await r.json();
       selLook.value = String(d.lookahead_days);
       selInt.value  = String(d.run_interval_hours);
+      updateHeaderStyle();
     } catch(e) {}
   }
 
+  function updateHeaderStyle() {
+    document.querySelector('header').classList.toggle('manual-mode', parseInt(selInt.value) === 0);
+  }
+
   async function saveConfig() {
+    updateHeaderStyle();
     await fetch('/config', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -560,20 +573,25 @@ def _trigger_run():
     threading.Thread(target=_do, daemon=True).start()
     return jsonify({"status": "started"})
 
+WEB_PORT = int(os.getenv("PORT", "7840"))    # external port (for log message only)
+_INTERNAL_PORT = 5000                          # container-internal port (docker-compose maps PORT -> 5000)
+
 def _start_web():
-    _web_app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    _web_app.run(host="0.0.0.0", port=_INTERNAL_PORT, debug=False, use_reloader=False)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     threading.Thread(target=_start_web, daemon=True).start()
-    log.info("Web UI available at http://localhost:5000")
-
-    run()
+    log.info(f"Web UI available at http://localhost:{WEB_PORT}")
 
     if RUN_INTERVAL_HOURS > 0:
-        log.info(f"Scheduling next run every {RUN_INTERVAL_HOURS}h")
+        log.info(f"Scheduling runs every {RUN_INTERVAL_HOURS}h (no immediate run on startup)")
         schedule.every(RUN_INTERVAL_HOURS).hours.do(run)
         while True:
             schedule.run_pending()
+            time.sleep(60)
+    else:
+        log.info("RUN_INTERVAL_HOURS=0 — manual runs only")
+        while True:
             time.sleep(60)
