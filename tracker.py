@@ -293,6 +293,9 @@ def create_event(service, show_name, provider, episode):
 
 # ── Main run ──────────────────────────────────────────────────────────────────
 def run():
+    global _last_run_time
+    from zoneinfo import ZoneInfo
+    _last_run_time = datetime.now(ZoneInfo(TIMEZONE)).strftime("%b %-d, %I:%M %p")
     log.info("━" * 60)
     log.info("TV Episode Tracker — starting run")
     log.info("━" * 60)
@@ -361,6 +364,7 @@ def run():
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 _run_lock = threading.Lock()
+_last_run_time: str = ""
 _web_app  = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -385,6 +389,7 @@ _HTML = """<!doctype html>
   #btn-run:disabled { background: #555; color: #888; cursor: default; }
   #btn-clear { background: #444; color: #ccc; }
   #status { font-size: 12px; color: #888; }
+  #last-run { font-size: 12px; color: #888; }
   header.manual-mode { background: #1e1608 !important; border-bottom-color: #b8860b; }
   #manual-badge { display:none; font-size:11px; font-weight:bold; color:#f0a500;
                   background:#3a2a00; border:1px solid #b8860b; border-radius:4px;
@@ -403,6 +408,7 @@ _HTML = """<!doctype html>
 <header>
   <h1>📺 TV Episode Tracker</h1>
   <span id="manual-badge">⏸ SCHEDULER DISABLED</span>
+  <span id="last-run"></span>
   <span id="status">connecting…</span>
   <a id="ha-link" href="#" target="_blank" rel="noopener"
      style="display:none;color:#7eb8f7;font-size:12px;text-decoration:none"
@@ -432,10 +438,11 @@ _HTML = """<!doctype html>
 <div id="log"></div>
 <script>
   let offset = 0, polling = null;
-  const logEl   = document.getElementById('log');
-  const statusEl= document.getElementById('status');
-  const btnRun  = document.getElementById('btn-run');
-  const haLink  = document.getElementById('ha-link');
+  const logEl    = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const lastRunEl= document.getElementById('last-run');
+  const btnRun   = document.getElementById('btn-run');
+  const haLink   = document.getElementById('ha-link');
   const selLook = document.getElementById('sel-lookahead');
   const selInt  = document.getElementById('sel-interval');
 
@@ -488,7 +495,8 @@ _HTML = """<!doctype html>
       const d = await r.json();
       if (d.ha_url && haLink.style.display === 'none') setHaLink(d.ha_url, d.ha_entity);
       if (d.lines.length) { appendLines(d.lines); offset = d.total; }
-      statusEl.textContent = 'live  ·  ' + d.running ? 'running…' : 'idle';
+      lastRunEl.textContent = d.last_run ? 'Last run: ' + d.last_run : '';
+      statusEl.textContent = d.running ? 'running…' : 'idle';
       btnRun.disabled = d.running;
     } catch(e) { statusEl.textContent = 'disconnected'; }
   }
@@ -517,7 +525,8 @@ def _logs():
     since = int(flask_request.args.get("since", 0))
     buf   = list(LOG_BUFFER)
     return jsonify({"lines": buf[since:], "total": len(buf), "running": _run_lock.locked(),
-                    "ha_url": HA_URL, "ha_entity": HA_TODO_ENTITY})
+                    "ha_url": HA_URL, "ha_entity": HA_TODO_ENTITY,
+                    "last_run": _last_run_time})
 
 @_web_app.route("/config", methods=["GET"])
 def _get_config():
