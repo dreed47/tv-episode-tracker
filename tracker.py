@@ -212,9 +212,11 @@ def _parse_date(s):
 
 # ── Calendar helpers ──────────────────────────────────────────────────────────
 def get_existing_event_keys(service):
-    """Return set of 'Title_YYYY-MM-DD' for events in the lookahead window."""
+    """Return (set of episode IDs, set of 'Title_YYYY-MM-DD' for old events)."""
     now    = datetime.now(timezone.utc)
     end    = now + timedelta(days=LOOKAHEAD_DAYS)
+    start  = now - timedelta(days=1)  # Look back to include recently created events
+    ids    = set()
     keys   = set()
     token  = None
 
@@ -222,7 +224,7 @@ def get_existing_event_keys(service):
         try:
             result = service.events().list(
                 calendarId=CALENDAR_ID,
-                timeMin=now.isoformat(),
+                timeMin=start.isoformat(),
                 timeMax=end.isoformat(),
                 singleEvents=True,
                 maxResults=250,
@@ -233,17 +235,23 @@ def get_existing_event_keys(service):
             break
 
         for ev in result.get("items", []):
-            title = ev.get("summary", "")
-            start = ev.get("start", {})
-            date  = (start.get("date") or start.get("dateTime", ""))[:10]
-            if title and date:
-                keys.add(f"{title}_{date}")
+            extended = ev.get("extendedProperties", {}).get("private", {})
+            ep_id = extended.get("tvmaze_episode_id")
+            if ep_id:
+                ids.add(ep_id)
+            else:
+                # Old event without ID, use title+date
+                title = ev.get("summary", "")
+                start_ev = ev.get("start", {})
+                date  = (start_ev.get("date") or start_ev.get("dateTime", ""))[:10]
+                if title and date:
+                    keys.add(f"{title}_{date}")
 
         token = result.get("nextPageToken")
         if not token:
             break
 
-    return keys
+    return ids, keys
 
 
 def create_event(service, show_name, provider, episode):
@@ -280,6 +288,11 @@ def create_event(service, show_name, provider, episode):
         "start":       start,
         "end":         end,
         "colorId":     COLOR_ID,
+        "extendedProperties": {
+            "private": {
+                "tvmaze_episode_id": str(episode["id"])
+            }
+        }
     }
 
     try:
@@ -311,8 +324,8 @@ def run():
         log.warning("No shows loaded — nothing to do.")
         return
 
-    existing = get_existing_event_keys(service)
-    log.info(f"Found {len(existing)} events already in the {LOOKAHEAD_DAYS}-day window")
+    existing_ids, existing_keys = get_existing_event_keys(service)
+    log.info(f"Found {len(existing_ids)} events with IDs and {len(existing_keys)} old events in the window")
 
     created = skipped = errors = 0
 
@@ -340,14 +353,15 @@ def run():
                 continue
 
             for ep in episodes:
+                ep_id = str(ep["id"])
                 airdate = ep.get("airdate", "")
                 key     = f"{canonical} on {provider}_{airdate}"
-                if key in existing:
+                if ep_id in existing_ids or key in existing_keys:
                     log.info(f"  —  {canonical} on {provider} ({airdate}): already on calendar")
                     skipped += 1
                 else:
                     if create_event(service, canonical, provider, ep):
-                        existing.add(key)
+                        existing_ids.add(ep_id)
                         created += 1
                     else:
                         errors += 1
