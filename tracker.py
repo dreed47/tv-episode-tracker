@@ -239,13 +239,14 @@ def get_existing_event_keys(service):
             ep_id = extended.get("tvmaze_episode_id")
             if ep_id:
                 ids.add(ep_id)
-            else:
-                # Old event without ID, use title+date
-                title = ev.get("summary", "")
-                start_ev = ev.get("start", {})
-                date  = (start_ev.get("date") or start_ev.get("dateTime", ""))[:10]
-                if title and date:
-                    keys.add(f"{title}_{date}")
+
+            # Keep a title+date fallback key for both old and new events.
+            # This helps if an event exists but lacks/loses the custom episode ID.
+            title = ev.get("summary", "")
+            start_ev = ev.get("start", {})
+            date  = (start_ev.get("date") or start_ev.get("dateTime", ""))[:10]
+            if title and date:
+                keys.add(f"{title}_{date}")
 
         token = result.get("nextPageToken")
         if not token:
@@ -283,6 +284,8 @@ def create_event(service, show_name, provider, episode):
         end   = {"date": airdate}
 
     body = {
+        # Deterministic ID makes inserts idempotent (same episode -> same event id).
+        "id": f"tv{episode['id']}",
         "summary":     title,
         "description": desc,
         "start":       start,
@@ -298,10 +301,13 @@ def create_event(service, show_name, provider, episode):
     try:
         service.events().insert(calendarId=CALENDAR_ID, body=body).execute()
         log.info(f"  ✓  Created: {title}  ({airdate})")
-        return True
+        return "created"
     except HttpError as e:
+        if getattr(e, "resp", None) and e.resp.status == 409:
+            log.info(f"  —  {title} ({airdate}): already on calendar")
+            return "skipped"
         log.error(f"  ✗  Failed to create '{title}': {e}")
-        return False
+        return "error"
 
 
 # ── Main run ──────────────────────────────────────────────────────────────────
@@ -360,9 +366,13 @@ def run():
                     log.info(f"  —  {canonical} on {provider} ({airdate}): already on calendar")
                     skipped += 1
                 else:
-                    if create_event(service, canonical, provider, ep):
+                    result = create_event(service, canonical, provider, ep)
+                    if result == "created":
                         existing_ids.add(ep_id)
                         created += 1
+                    elif result == "skipped":
+                        existing_ids.add(ep_id)
+                        skipped += 1
                     else:
                         errors += 1
 
